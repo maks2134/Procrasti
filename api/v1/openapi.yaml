@@ -1,0 +1,168 @@
+openapi: 3.0.0
+info:
+  title: ProcrastiGo Excuse API
+  description: Микросервис для генерации креативных оправданий прокрастинации
+  version: 1.0.0
+  contact:
+    name: API Support
+    email: support@procrastigo.dev
+
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Development server
+
+paths:
+  /excuses/random:
+    get:
+      summary: Получить случайное оправдание
+      description: Возвращает одно случайное оправдание для прокрастинации
+      parameters:
+        - name: lang
+          in: query
+          schema:
+            type: string
+            enum: [ru, en, es, fr]
+          description: Язык оправдания
+        - name: category
+          in: query
+          schema:
+            type: string
+            enum: [work, family, tech, urgent, general]
+          description: Категория оправдания
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Excuse'
+        '404':
+          description: Оправдания не найдены
+        '500':
+          description: Внутренняя ошибка сервера
+
+  /excuses:
+    get:
+      summary: Получить список оправданий
+      description: Возвращает список оправданий с фильтрацией
+      parameters:
+        - name: category
+          in: query
+          schema:
+            type: string
+          description: Фильтр по категории
+        - name: lang
+          in: query
+          schema:
+            type: string
+          description: Фильтр по языку
+        - name: severity
+          in: query
+          schema:
+            type: string
+          description: Фильтр по уровню серьезности
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+          description: Количество оправданий
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Excuse'
+
+    post:
+      summary: Создать новое оправдание
+      description: Добавляет новое оправдание в базу данных
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExcuseRequest'
+      responses:
+        '201':
+          description: Оправдание создано
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Excuse'
+        '400':
+          description: Неверный запрос
+
+  /stats:
+    get:
+      summary: Получить статистику
+      description: Возвращает статистику использования API
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Stats'
+
+components:
+  schemas:
+    Excuse:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "exc_abc123"
+        text:
+          type: string
+          example: "Мой кот сел на клавиатуру и удалил весь код"
+        category:
+          type: string
+          example: "tech"
+        language:
+          type: string
+          example: "ru"
+        severity:
+          type: string
+          example: "high"
+        created_at:
+          type: string
+          format: date-time
+          example: "2024-01-15T10:30:00Z"
+
+    ExcuseRequest:
+      type: object
+      required:
+        - text
+      properties:
+        text:
+          type: string
+        category:
+          type: string
+          default: "general"
+        language:
+          type: string
+          default: "ru"
+        severity:
+          type: string
+          default: "medium"
+
+    Stats:
+      type: object
+      properties:
+        total_excuses:
+          type: integer
+          example: 150
+        most_popular_category:
+          type: string
+          example: "tech"
+        excuses_today:
+          type: integer
+          example: 15
+        global_procrastination_level:
+          type: string
+          example: "high"

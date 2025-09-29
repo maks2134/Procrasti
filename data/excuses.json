@@ -1,0 +1,44 @@
+{
+  "excuses": [
+    {
+      "id": "exc_1",
+      "text": "Мой кот сел на клавиатуру и случайно запустил биткоин-майнер вместо моего кода",
+      "category": "tech",
+      "language": "ru",
+      "severity": "high",
+      "created_at": "2024-01-15T10:30:00Z"
+    },
+    {
+      "id": "exc_2",
+      "text": "Был критический апдейт в World of Warcraft, срочно нужно было помочь гильдии",
+      "category": "urgent",
+      "language": "ru",
+      "severity": "critical",
+      "created_at": "2024-01-15T11:20:00Z"
+    },
+    {
+      "id": "exc_3",
+      "text": "Я думал, сегодня еще воскресенье",
+      "category": "general",
+      "language": "ru",
+      "severity": "low",
+      "created_at": "2024-01-15T09:15:00Z"
+    },
+    {
+      "id": "exc_4",
+      "text": "My brain returned 500 Internal Server Error and required reboot",
+      "category": "tech",
+      "language": "en",
+      "severity": "medium",
+      "created_at": "2024-01-15T14:45:00Z"
+    },
+    {
+      "id": "exc_5",
+      "text": "Нужно было срочно переустановить Windows, потому что он сам попросил",
+      "category": "tech",
+      "language": "ru",
+      "severity": "high",
+      "created_at": "2024-01-15T13:10:00Z"
+    }
+  ]
+}
