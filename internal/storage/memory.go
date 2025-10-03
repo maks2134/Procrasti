@@ -1,110 +1,159 @@
 package storage
 
 import (
-	"encoding/json"
-	"math/rand"
-	"os"
+	"errors"
+	"fmt"
+	"io/ioutil"
+	"procrastigo/internal/models"
+	"procrastigo/pkg/utils"
 	"sync"
 	"time"
 
-	"procrastigo/internal/models"
-	"procrastigo/pkg/utils"
+	"encoding/json"
 )
 
+// ExcuseFileFormat - структура для десериализации данных из JSON файла
+type ExcuseFileFormat struct {
+	Excuses []models.Excuse `json:"excuses"`
+}
+
+// MemoryStorage - простое хранилище в оперативной памяти
 type MemoryStorage struct {
+	excuses map[string]models.Excuse
 	mu      sync.RWMutex
-	excuses []models.Excuse
 }
 
 func NewMemoryStorage() *MemoryStorage {
-	rand.Seed(time.Now().UnixNano())
-	return &MemoryStorage{excuses: make([]models.Excuse, 0)}
+	return &MemoryStorage{
+		excuses: make(map[string]models.Excuse),
+	}
 }
 
-func (m *MemoryStorage) LoadFromFile(filename string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	f, err := os.Open(filename)
+// LoadFromFile загружает оправдания из JSON файла
+func (s *MemoryStorage) LoadFromFile(filename string) error {
+	data, err := ioutil.ReadFile(filename)
 	if err != nil {
-		return err
-	}
-	defer f.Close()
-
-	var data []models.Excuse
-	if err := json.NewDecoder(f).Decode(&data); err != nil {
-		return err
+		return fmt.Errorf("failed to read file: %w", err)
 	}
 
-	m.excuses = data
+	var fileData ExcuseFileFormat
+	if err := json.Unmarshal(data, &fileData); err != nil {
+		return fmt.Errorf("json: cannot unmarshal object into Go value of type %T: %w", fileData, err)
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, excuse := range fileData.Excuses {
+		s.excuses[excuse.ID] = excuse
+	}
 	return nil
 }
 
-func (m *MemoryStorage) GetRandomExcuse() (*models.Excuse, error) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
+func (s *MemoryStorage) GetRandomExcuse() (*models.Excuse, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 
-	if len(m.excuses) == 0 {
+	if len(s.excuses) == 0 {
 		return nil, nil
 	}
 
-	idx := rand.Intn(len(m.excuses))
-	e := m.excuses[idx]
-	return &e, nil
-}
-
-func (m *MemoryStorage) GetExcuses(category, language string, limit int) ([]models.Excuse, error) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
-	filtered := utils.FilterExcuses(m.excuses, category, language, "")
-	if limit > len(filtered) {
-		limit = len(filtered)
+	keys := make([]string, 0, len(s.excuses))
+	for k := range s.excuses {
+		keys = append(keys, k)
 	}
-	return filtered[:limit], nil
+
+	randomKey := keys[utils.RandomInt(len(keys))]
+	excuse := s.excuses[randomKey]
+
+	return &excuse, nil
 }
 
-func (m *MemoryStorage) CreateExcuse(excuse models.Excuse) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+func (s *MemoryStorage) GetExcuses(category, language string, limit int) ([]models.Excuse, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 
-	m.excuses = append(m.excuses, excuse)
+	var result []models.Excuse
+	count := 0
+	for _, excuse := range s.excuses {
+		matches := true
+		if category != "" && excuse.Category != category {
+			matches = false
+		}
+		if language != "" && excuse.Language != language {
+			matches = false
+		}
+
+		if matches {
+			result = append(result, excuse)
+			count++
+			if limit > 0 && count >= limit {
+				break
+			}
+		}
+	}
+	return result, nil
+}
+
+func (s *MemoryStorage) CreateExcuse(excuse models.Excuse) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if _, exists := s.excuses[excuse.ID]; exists {
+		return errors.New("excuse already exists")
+	}
+
+	s.excuses[excuse.ID] = excuse
 	return nil
 }
 
-func (m *MemoryStorage) GetStats() (*models.Stats, error) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
+// RateExcuse - НОВАЯ РЕАЛИЗАЦИЯ ДЛЯ УДОВЛЕТВОРЕНИЯ ИНТЕРФЕЙСУ
+func (s *MemoryStorage) RateExcuse(id string, change int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
-	if len(m.excuses) == 0 {
-		return &models.Stats{}, nil
+	excuse, exists := s.excuses[id]
+	if !exists {
+		return errors.New("excuse not found")
 	}
 
-	counts := make(map[string]int)
-	today := utils.GetStartOfDay()
-	excusesToday := 0
-	for _, e := range m.excuses {
-		counts[e.Category]++
-		if !e.CreatedAt.Before(today) {
-			excusesToday++
-		}
-	}
+	// Обновляем рейтинг в памяти
+	excuse.Rating += change
+	s.excuses[id] = excuse
 
-	most := ""
-	max := 0
-	for k, v := range counts {
-		if v > max {
-			max = v
-			most = k
-		}
-	}
-
-	return &models.Stats{
-		TotalExcuses:               len(m.excuses),
-		MostPopularCategory:        most,
-		ExcusesToday:               excusesToday,
-		GlobalProcrastinationLevel: utils.CalculateProcrastinationLevel(excusesToday),
-	}, nil
+	return nil
 }
 
+func (s *MemoryStorage) GetStats() (*models.Stats, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	stats := &models.Stats{
+		TotalExcuses: len(s.excuses),
+		ExcusesToday: 0,
+	}
+
+	now := time.Now().Truncate(24 * time.Hour)
+	categoryCounts := make(map[string]int)
+	maxCount := 0
+
+	for _, excuse := range s.excuses {
+		// Статистика за сегодня
+		if excuse.CreatedAt.Truncate(24 * time.Hour).Equal(now) {
+			stats.ExcusesToday++
+		}
+
+		// Самая популярная категория
+		categoryCounts[excuse.Category]++
+		if categoryCounts[excuse.Category] > maxCount {
+			maxCount = categoryCounts[excuse.Category]
+			stats.MostPopularCategory = excuse.Category
+		}
+	}
+
+	stats.GlobalProcrastinationLevel = utils.CalculateProcrastinationLevel(stats.ExcusesToday)
+
+	return stats, nil
+}
+
+// Утверждение, что *MemoryStorage реализует Storage
 var _ Storage = (*MemoryStorage)(nil)

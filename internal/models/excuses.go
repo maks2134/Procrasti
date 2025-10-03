@@ -9,6 +9,7 @@ type Excuse struct {
 	Language  string    `json:"language"`
 	Severity  string    `json:"severity"`
 	CreatedAt time.Time `json:"created_at"`
+	Rating    int       `json:"rating"`
 }
 
 type ExcuseRequest struct {
@@ -16,6 +17,10 @@ type ExcuseRequest struct {
 	Category string `json:"category"`
 	Language string `json:"language"`
 	Severity string `json:"severity"`
+}
+
+type RatingRequest struct {
+	Upvote bool `json:"upvote"`
 }
 
 type Stats struct {

@@ -1,157 +1,112 @@
 package utils
 
 import (
-	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"io"
-	"math/big"
+	"math/rand"
 	"net/http"
-	"procrastigo/internal/models"
+	"strconv"
 	"strings"
 	"time"
 )
 
+// Инициализация генератора случайных чисел
+func init() {
+	rand.Seed(time.Now().UnixNano())
+}
+
+// RandomInt генерирует случайное целое число в диапазоне [0, max-1].
+func RandomInt(max int) int {
+	if max <= 0 {
+		return 0
+	}
+	return rand.Intn(max)
+}
+
+// GetStartOfDay возвращает начало текущего дня (UTC).
+func GetStartOfDay() time.Time {
+	now := time.Now().UTC()
+	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+}
+
+// GenerateID создает уникальный ID с префиксом.
 func GenerateID(prefix string) string {
-	const charset = "abcdefghijklmnopqrstuvwxyz0123456789"
-	result := make([]byte, 8)
-
-	for i := range result {
-		num, _ := rand.Int(rand.Reader, big.NewInt(int64(len(charset))))
-		result[i] = charset[num.Int64()]
-	}
-
-	return prefix + "_" + string(result)
+	timestamp := time.Now().UnixNano()
+	return fmt.Sprintf("%s-%d", prefix, timestamp)
 }
 
+// --- Validation and Parsing ---
+
+// ValidateLanguage проверяет, является ли язык допустимым.
+func ValidateLanguage(lang string) bool {
+	validLangs := map[string]bool{"ru": true, "en": true}
+	return validLangs[strings.ToLower(lang)]
+}
+
+// ValidateCategory проверяет, является ли категория допустимой.
 func ValidateCategory(category string) bool {
-	validCategories := map[string]bool{
-		"work":    true,
-		"family":  true,
-		"tech":    true,
-		"urgent":  true,
+	validCats := map[string]bool{
 		"general": true,
+		"work":    true,
+		"study":   true,
+		"social":  true,
+		"health":  true,
 	}
-
-	return validCategories[strings.ToLower(category)]
+	return validCats[strings.ToLower(category)]
 }
 
+// ValidateSeverity проверяет, является ли важность допустимой.
 func ValidateSeverity(severity string) bool {
 	validSeverities := map[string]bool{
-		"low":      true,
-		"medium":   true,
-		"high":     true,
-		"critical": true,
+		"low":    true,
+		"medium": true,
+		"high":   true,
 	}
-
 	return validSeverities[strings.ToLower(severity)]
 }
 
-func ValidateLanguage(lang string) bool {
-	validLanguages := map[string]bool{
-		"ru": true,
-		"en": true,
-		"es": true,
-		"fr": true,
-	}
-
-	return validLanguages[strings.ToLower(lang)]
-}
-
-func JSONResponse(w http.ResponseWriter, status int, data interface{}) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-
-	if err := json.NewEncoder(w).Encode(data); err != nil {
-		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
-	}
-}
-
-func ErrorResponse(w http.ResponseWriter, status int, message string) {
-	JSONResponse(w, status, map[string]string{
-		"error":   http.StatusText(status),
-		"message": message,
-	})
-}
-
+// ParseLimit парсит строковый лимит в целое число, используя значение по умолчанию.
 func ParseLimit(limitStr string, defaultLimit int) int {
 	if limitStr == "" {
 		return defaultLimit
 	}
-
-	var limit int
-	if _, err := fmt.Sscanf(limitStr, "%d", &limit); err != nil {
+	limit, err := strconv.Atoi(limitStr)
+	if err != nil || limit < 0 {
 		return defaultLimit
 	}
-
-	if limit > 100 {
-		limit = 100
-	}
-
 	return limit
 }
 
+// CalculateProcrastinationLevel оценивает уровень прокрастинации.
 func CalculateProcrastinationLevel(excusesToday int) string {
-	switch {
-	case excusesToday > 20:
-		return "apocalyptic"
-	case excusesToday > 10:
-		return "critical"
-	case excusesToday > 5:
-		return "high"
-	case excusesToday > 2:
-		return "medium"
-	default:
-		return "low"
+	if excusesToday > 100 {
+		return "Critical"
+	} else if excusesToday > 50 {
+		return "High"
+	} else if excusesToday > 10 {
+		return "Medium"
+	}
+	return "Low"
+}
+
+// --- HTTP Helpers ---
+
+// JSONResponse отправляет ответ в формате JSON.
+func JSONResponse(w http.ResponseWriter, statusCode int, data interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	if err := json.NewEncoder(w).Encode(data); err != nil {
+		http.Error(w, fmt.Sprintf("Error encoding JSON: %v", err), http.StatusInternalServerError)
 	}
 }
 
-func GetStartOfDay() time.Time {
-	now := time.Now()
-	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+// ErrorResponse отправляет ответ об ошибке в формате JSON.
+func ErrorResponse(w http.ResponseWriter, statusCode int, message string) {
+	JSONResponse(w, statusCode, map[string]string{"error": message})
 }
 
-func FilterExcuses(excuses []models.Excuse, category, language, severity string) []models.Excuse {
-	var filtered []models.Excuse
-
-	for _, excuse := range excuses {
-		match := true
-
-		if category != "" && !strings.EqualFold(excuse.Category, category) {
-			match = false
-		}
-
-		if language != "" && !strings.EqualFold(excuse.Language, language) {
-			match = false
-		}
-
-		if severity != "" && !strings.EqualFold(excuse.Severity, severity) {
-			match = false
-		}
-
-		if match {
-			filtered = append(filtered, excuse)
-		}
-	}
-
-	return filtered
-}
-
-func JSONDecode(body io.ReadCloser, v interface{}) error {
-	defer body.Close()
-	return json.NewDecoder(body).Decode(v)
-}
-
-func GetClientIP(r *http.Request) string {
-	ips := r.Header.Get("X-Forwarded-For")
-	if ips != "" {
-		return strings.Split(ips, ",")[0]
-	}
-
-	ips = r.Header.Get("X-Real-IP")
-	if ips != "" {
-		return ips
-	}
-
-	return r.RemoteAddr
+// JSONDecode декодирует JSON из тела запроса.
+func JSONDecode(r io.Reader, v interface{}) error {
+	return json.NewDecoder(r).Decode(v)
 }
